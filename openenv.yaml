@@ -1,0 +1,115 @@
+# openenv.yaml — OpenEnv environment specification
+# Domain: Software Engineering Code Review
+# An AI agent reads pull requests, inspects diffs, runs checks,
+# writes structured review comments, and decides approve/request-changes/reject.
+
+name: code-review-env
+version: "1.0.0"
+description: >
+  A real-world software engineering environment where an AI agent acts as
+  a senior code reviewer. The agent receives pull requests containing file
+  diffs, test results, CI status, and repository context. It must identify
+  bugs, security issues, style violations, and logic errors; write precise
+  line-level comments; assign severity labels; and produce a final verdict.
+  Reward is computed by comparing the agent's review against a gold-standard
+  grader that holds ground-truth annotations.
+
+domain: software_engineering
+real_world: true
+tasks:
+  - id: easy
+    name: "Spot the Bug"
+    description: >
+      Single-file PRs with one deliberate, clearly visible bug per diff.
+      Agent must identify the buggy line, explain the error, and suggest a fix.
+    max_steps: 10
+    reward_range: [0.0, 1.0]
+    difficulty: easy
+
+  - id: medium
+    name: "Full PR Review"
+    description: >
+      Multi-file PRs (3-6 files) with mixed concerns: bugs, security issues,
+      missing tests, style violations. Agent must produce structured per-file
+      comments and a verdict with justification.
+    max_steps: 25
+    reward_range: [0.0, 1.0]
+    difficulty: medium
+
+  - id: hard
+    name: "Security Audit"
+    description: >
+      Complex PRs introducing subtle security vulnerabilities: SQL injection,
+      path traversal, insecure deserialization, race conditions, secrets in code.
+      Agent must find ALL issues (multi-label), assess CVSS severity, and propose
+      mitigations. Partial credit per discovered issue.
+    max_steps: 40
+    reward_range: [0.0, 1.0]
+    difficulty: hard
+
+observation_space:
+  type: dict
+  fields:
+    pr_title:         {type: string}
+    pr_description:   {type: string}
+    author:           {type: string}
+    base_branch:      {type: string}
+    files_changed:    {type: list[FileDiff]}
+    ci_status:        {type: CIStatus}
+    test_summary:     {type: TestSummary}
+    repo_context:     {type: RepoContext}
+    step_history:     {type: list[AgentAction]}
+
+action_space:
+  type: dict
+  fields:
+    action_type:
+      type: enum
+      values: [comment, request_changes, approve, reject, examine_file, run_check]
+    file_path:        {type: string, optional: true}
+    line_number:      {type: int, optional: true}
+    comment_body:     {type: string, optional: true}
+    severity:
+      type: enum
+      values: [info, warning, error, critical]
+      optional: true
+    verdict:
+      type: enum
+      values: [approve, request_changes, reject]
+      optional: true
+    reasoning:        {type: string, optional: true}
+
+reward:
+  components:
+    - name: bug_detection
+      weight: 0.35
+      description: F1 score over ground-truth bug locations
+    - name: comment_quality
+      weight: 0.25
+      description: BLEU/semantic similarity of comments to gold annotations
+    - name: severity_accuracy
+      weight: 0.20
+      description: Exact-match accuracy on severity labels
+    - name: verdict_correctness
+      weight: 0.15
+      description: Binary correct/wrong final verdict
+    - name: efficiency
+      weight: 0.05
+      description: Reward for fewer steps to correct verdict (step penalty)
+
+baseline_agents:
+  - name: random
+    description: Random actions from action space
+  - name: keyword_heuristic
+    description: Simple grep-based pattern matching
+  - name: llm_zero_shot
+    description: Zero-shot LLM review with no env feedback
+
+reproducibility:
+  seed: 42
+  n_eval_episodes: 50
+
+huggingface:
+  space_id: openenv/code-review-env
+  sdk: gradio
+  python_version: "3.11"
